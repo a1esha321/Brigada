@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Бригада — учёт заказов и смен</title>
+<script src="https://telegram.org/js/telegram-web-app.js" onerror="void 0"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;600;700&display=swap');
+:root{
+  --bg:#0D1219; --surface:#171F2B; --surface2:#1E2836; --line:#2B3849;
+  --text:#EAF0F7; --dim:#93A4B8; --faint:#5F7186;
+  --amber:#FFB020; --blue:#5FA8FF; --green:#4ED88C; --coral:#FF7A59; --violet:#C08FFF;
+  --danger:#E5484D;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg)}
+body{
+  color:var(--text); font-family:'Inter',system-ui,sans-serif; font-size:16px;
+  max-width:560px; margin:0 auto; padding-bottom:calc(84px + env(safe-area-inset-bottom));
+  min-height:100vh;
+}
+input,textarea,button,select{font-family:inherit}
+input[type=date],input[type=time]{color-scheme:dark}
+button{cursor:pointer}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+header{padding:16px 16px 4px;display:flex;justify-content:space-between;align-items:baseline}
+.brand{font-family:'Oswald',sans-serif;font-weight:600;font-size:21px;letter-spacing:.12em}
+.brand b{color:var(--amber);font-weight:600}
+.storage-badge{font-size:11px;color:var(--faint);letter-spacing:.04em}
+main{padding:6px 16px 16px}
+h2{font-family:'Oswald',sans-serif;font-weight:500;font-size:20px;letter-spacing:.04em;margin:10px 0 12px}
+
+.tabbar{
+  position:fixed;bottom:0;left:0;right:0;max-width:560px;margin:0 auto;display:flex;
+  background:rgba(22,29,40,.96);backdrop-filter:blur(8px);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom);z-index:20;
+}
+.tabbar button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:10px 0 12px;background:none;border:none;color:var(--dim);font-size:11px;
+}
+.tabbar button .ic{font-size:19px;line-height:1}
+.tabbar button.active{color:var(--amber)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.card-title{color:var(--dim);font-size:12px;letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px}
+.empty{color:var(--dim);padding:14px 4px;line-height:1.5;font-size:15px}
+.hint{color:var(--faint);font-size:13px;margin-top:10px;line-height:1.5}
+label{display:block;color:var(--dim);font-size:13px;margin:8px 0 6px}
+input.f,select.f{
+  width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;
+  color:var(--text);padding:12px;font-size:16px;min-height:48px;
+}
+.row2{display:flex;gap:10px;margin-top:10px}
+.row2>*{flex:1}
+
+.btn{border:none;border-radius:12px;font-size:16px;font-weight:700;min-height:48px;padding:12px 16px}
+.btn-primary{background:var(--amber);color:#10151D}
+.btn-primary:disabled{opacity:.4}
+.btn-big{width:100%;min-height:52px;font-size:17px;margin-bottom:14px}
+.btn-outline{background:transparent;color:var(--amber);border:2px solid var(--amber)}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--line);font-weight:400}
+.btn-danger{background:var(--danger);color:#fff}
+.back{background:none;border:none;color:var(--dim);font-size:15px;padding:8px 0;display:block}
+
+.list-card{
+  display:block;width:100%;text-align:left;background:var(--surface);
+  border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;color:var(--text);
+}
+.list-card:active{background:var(--surface2)}
+.spread{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.order-num{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.03em}
+.meta{color:var(--dim);font-size:13px;margin-top:4px}
+.mono{font-variant-numeric:tabular-nums;font-weight:700}
+.money{font-variant-numeric:tabular-nums;font-weight:600;font-family:'Oswald',sans-serif;color:var(--amber);letter-spacing:.02em}
+.money-big{font-size:20px}
+.money-huge{font-size:38px;margin:4px 0}
+
+.chip{border:1px solid;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;letter-spacing:.03em;display:inline-block;background:transparent}
+.chip-btn{border:2px solid;border-radius:999px;padding:10px 16px;font-size:15px;font-weight:700;min-height:44px;background:transparent}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 6px}
+
+.line-row{display:flex;justify-content:space-between;padding:5px 0;font-size:15px;gap:8px}
+.divider{border-top:1px solid #232D3E;margin:8px 0 4px}
+
+.person-row{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 10px;margin-bottom:8px}
+.person-row.on{border-color:var(--amber)}
+.person-toggle{flex:1;display:flex;align-items:center;gap:12px;background:none;border:none;color:var(--text);font-size:16px;padding:10px 0;text-align:left;min-height:48px}
+.checkbox{width:26px;height:26px;border-radius:8px;border:2px solid var(--faint);display:inline-flex;align-items:center;justify-content:center;color:#10151D;font-weight:900;flex-shrink:0}
+.person-row.on .checkbox{background:var(--amber);border-color:var(--amber)}
+.amount-input{width:100px;background:var(--bg);border:1px solid var(--line);border-radius:10px;color:var(--amber);padding:10px 8px;font-size:16px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;min-height:44px}
+
+/* календарь */
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px}
+.cal-nav{background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:12px;width:48px;height:48px;font-size:22px}
+.cal-title{font-family:'Oswald',sans-serif;font-size:19px;letter-spacing:.04em}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-dow{text-align:center;color:var(--faint);font-size:12px;padding:4px 0}
+.cal-cell{
+  background:var(--surface);border:2px solid transparent;border-radius:10px;color:var(--text);
+  padding:7px 0 5px;font-size:15px;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:50px;
+}
+.cal-cell.today{border-color:var(--blue)}
+.cal-cell.sel{border-color:var(--amber)}
+.cal-cell:disabled{visibility:hidden}
+.dots{display:flex;gap:2px;justify-content:center;min-height:6px;flex-wrap:wrap;max-width:34px}
+.dot{width:6px;height:6px;border-radius:3px}
+.dot.plan{background:transparent;border:1.5px solid var(--faint);width:5px;height:5px}
+
+/* лента дня */
+.tl{position:relative;padding-left:64px;margin-top:6px}
+.tl:before{content:'';position:absolute;left:52px;top:6px;bottom:6px;width:2px;background:var(--line);border-radius:1px}
+.tl-item{position:relative;margin-bottom:10px}
+.tl-time{position:absolute;left:-64px;top:12px;width:46px;text-align:right;color:var(--dim);font-size:13px;font-variant-numeric:tabular-nums;line-height:1.35}
+.tl-node{position:absolute;left:-16px;top:16px;width:10px;height:10px;border-radius:5px;background:var(--bg);border:2px solid var(--faint)}
+.tl-item.fact .tl-node{border-color:var(--amber);background:var(--amber)}
+.plan-card{
+  display:block;width:100%;text-align:left;background:transparent;color:var(--text);
+  border:1px dashed var(--faint);border-radius:12px;padding:11px 12px;
+}
+.plan-card .op{font-size:15px;line-height:1.35}
+.plan-card .client{color:var(--faint);font-size:12.5px;margin-top:2px}
+.fact-card{
+  display:block;width:100%;text-align:left;background:var(--surface);color:var(--text);
+  border:1px solid var(--line);border-radius:12px;padding:11px 12px;
+}
+.badge-order{font-family:'Oswald',sans-serif;font-size:13px;color:var(--amber);letter-spacing:.05em;white-space:nowrap}
+.badge-done{color:var(--green);font-size:12px;font-weight:700}
+.tl-add{color:var(--amber);font-weight:700;font-size:13px;white-space:nowrap}
+
+/* лист отчёта */
+.paper{background:#F4F2EC;border-radius:14px;padding:6px;margin-bottom:14px;box-shadow:0 4px 20px rgba(0,0,0,.45)}
+.paper textarea{width:100%;border:none;outline:none;resize:none;background:transparent;color:#22282F;font-family:'Courier New',monospace;font-size:15px;line-height:1.55;padding:12px}
+
+.del-x{background:none;border:1px solid var(--line);color:var(--faint);border-radius:10px;width:40px;height:40px;font-size:15px;flex-shrink:0}
+.toast{
+  position:fixed;bottom:calc(96px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+  background:var(--amber);color:#10151D;font-weight:700;padding:12px 20px;border-radius:12px;z-index:50;white-space:nowrap;
+}
+.warn-banner{background:#3A2A12;border:1px solid #6B4E1E;color:#F5C97A;border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.45;margin-bottom:12px}
+.import-summary{color:var(--green);font-size:14px}
+.overlap{color:var(--coral);font-size:12.5px;margin-top:4px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><b>■</b> БРИГАДА</div>
+  <div class="storage-badge" id="storageBadge"></div>
+</header>
+<main id="main"></main>
+<nav class="tabbar" id="tabbar"></nav>
+<input type="file" id="xlsInput" accept=".xls,.xlsx" style="display:none">
+<div id="toastBox"></div>
+
+<script>
+/* ================= Telegram ================= */
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor && tg.setHeaderColor('#0D1219'); tg.setBackgroundColor && tg.setBackgroundColor('#0D1219'); } catch(e){} }
+
+/* ================= Хранилище (Telegram Cloud → артефакт → память) ================= */
+const KEY = 'brigada-v2';
+const CHUNK = 3500;
+let backend = 'memory';
+if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) backend = 'tg';
+else if (window.storage) backend = 'artifact';
+
+const cloud = {
+  get: (k) => new Promise((res) => { try { tg.CloudStorage.getItem(k, (e, v) => res(e ? null : v)); } catch { res(null); } }),
+  set: (k, v) => new Promise((res) => { try { tg.CloudStorage.setItem(k, v, () => res()); } catch { res(); } }),
+};
+let memoryStore = null;
+
+async function loadData() {
+  try {
+    if (backend === 'tg') {
+      const n = parseInt(await cloud.get(KEY + ':n') || '0', 10);
+      if (!n) return null;
+      let s = '';
+      for (let i = 0; i < n; i++) s += (await cloud.get(KEY + ':' + i)) || '';
+      return s ? JSON.parse(s) : null;
+    }
+    if (backend === 'artifact') {
+      const r = await window.storage.get(KEY).catch(() => null);
+      return r && r.value ? JSON.parse(r.value) : null;
+    }
+    return memoryStore;
+  } catch { return null; }
+}
+async function persist(data) {
+  const json = JSON.stringify(data);
+  try {
+    if (backend === 'tg') {
+      const n = Math.ceil(json.length / CHUNK) || 1;
+      for (let i = 0; i < n; i++) await cloud.set(KEY + ':' + i, json.slice(i * CHUNK, (i + 1) * CHUNK));
+      await cloud.set(KEY + ':n', String(n));
+    } else if (backend === 'artifact') {
+      await window.storage.set(KEY, json);
+    } else {
+      memoryStore = data;
+    }
+  } catch { toast('Не удалось сохранить'); }
+}
+
+/* ================= Утилиты ================= */
+const DEFAULT_TYPES = ['Монтаж', 'Демонтаж', 'Транспорт', 'Склад'];
+const TYPE_COLORS = { 'Монтаж': 'var(--amber)', 'Демонтаж': 'var(--blue)', 'Транспорт': 'var(--green)', 'Склад': 'var(--coral)' };
+const tColor = (t) => TYPE_COLORS[t] || 'var(--violet)';
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+const fmtMoney = (n) => (Number(n) || 0).toLocaleString('ru-RU');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtD = (iso) => { if (!iso) return ''; const [y,m,d] = iso.split('-'); return `${d}.${m}.${y.slice(2)}`; };
+const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const MONTHS_R = { 'января':1,'февраля':2,'марта':3,'апреля':4,'мая':5,'июня':6,'июля':7,'августа':8,'сентября':9,'октября':10,'ноября':11,'декабря':12 };
+const DOW = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const plural = (n, a, b, c) => { const m10=n%10, m100=n%100; if(m10===1&&m100!==11)return a; if(m10>=2&&m10<=4&&(m100<12||m100>14))return b; return c; };
+const workTotal = (w) => w.lines.reduce((s,l)=>s+(Number(l.amount)||0),0);
+const orderTotal = (o) => o.works.reduce((s,w)=>s+workTotal(w),0);
+
+function guessType(op) {
+  const s = (op||'').toLowerCase();
+  if (/доставк|транспортировк|вывоз упаковк|перевозк/.test(s)) return 'Транспорт';
+  if (s.includes('демонтаж')) return 'Демонтаж';
+  if (s.includes('монтаж')) return 'Монтаж';
+  if (/погрузк|отгрузк|склад|прием|принять/.test(s)) return 'Склад';
+  return 'Монтаж';
+}
+
+/* ================= Парсер календаря 1С ================= */
+function parsePlanWorkbook(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  const events = [];
+  let curDate = null;
+  const dayRe = new RegExp('(\\d{1,2})\\s+(' + Object.keys(MONTHS_R).join('|') + ')\\s+(\\d{4})');
+  for (const row of rows) {
+    const cells = row.map((c) => String(c == null ? '' : c));
+    const joined = cells.join(' ');
+    const dm = joined.match(dayRe);
+    if (dm && /Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье/.test(cells[0])) {
+      curDate = `${dm[3]}-${String(MONTHS_R[dm[2]]).padStart(2,'0')}-${String(dm[1]).padStart(2,'0')}`;
+      continue;
+    }
+    const times = [...cells[0].matchAll(/(\d{1,2})\s*:\s*(\d{2})/g)];
+    if (curDate && times.length) {
+      const from = String(+times[0][1]).padStart(2,'0') + ':' + times[0][2];
+      const to = times.length > 1 ? String(+times[1][1]).padStart(2,'0') + ':' + times[1][2] : null;
+      const opCell = cells.slice(1).find((c) => c.trim()) || '';
+      const opLines = opCell.split('\n').map((l) => l.trim()).filter(Boolean);
+      const om = joined.match(/заказ\s*№?\s*(\d+)/i);
+      events.push({
+        id: uid(), date: curDate, from, to,
+        op: opLines[0] || 'Работа', client: opLines[1] || '',
+        order: om ? om[1] : null,
+      });
+    }
+  }
+  return events;
+}
+
+/* ================= Состояние ================= */
+let D = null; // {people, types, orders, plan}
+let view = { tab: 'plan', orderId: null, work: null, report: false, ym: null, selDay: null, sumYm: null, confirm: null, addingOrder: false, editPerson: null };
+let toastTimer = null;
+
+function toast(msg) {
+  clearTimeout(toastTimer);
+  document.getElementById('toastBox').innerHTML = `<div class="toast">${esc(msg)}</div>`;
+  toastTimer = setTimeout(() => (document.getElementById('toastBox').innerHTML = ''), 2200);
+}
+async function save() { await persist(D); }
+
+/* ================= Рендер ================= */
+function render() {
+  const main = document.getElementById('main');
+  let html = '';
+  if (view.tab === 'plan') html = renderPlan();
+  else if (view.tab === 'orders') html = view.work !== null ? renderWorkForm() : view.report ? renderReport() : view.orderId ? renderOrder() : renderOrders();
+  else if (view.tab === 'people') html = renderPeople();
+  else if (view.tab === 'summary') html = renderSummary();
+  main.innerHTML = html;
+  bindMain();
+  renderTabbar();
+  document.getElementById('storageBadge').textContent =
+    backend === 'tg' ? '☁ Telegram' : backend === 'artifact' ? '● сохраняется' : '○ без сохранения';
+}
+
+function renderTabbar() {
+  const tabs = [['plan','▦','План'],['orders','▤','Заказы'],['people','◉','Люди'],['summary','∑','Сводка']];
+  document.getElementById('tabbar').innerHTML = tabs.map(([k,ic,l]) =>
+    `<button data-tab="${k}" class="${view.tab===k?'active':''}"><span class="ic">${ic}</span><span>${l}</span></button>`).join('');
+  document.querySelectorAll('#tabbar button').forEach((b) =>
+    b.addEventListener('click', () => { view.tab = b.dataset.tab; view.orderId = null; view.work = null; view.report = false; view.confirm = null; render(); }));
+}
+
+/* ---------- Вкладка ПЛАН ---------- */
+function ymNow() { const n = new Date(); return [n.getFullYear(), n.getMonth()]; }
+
+function calendarGrid(year, month, byDayFact, byDayPlan, selDay, prefix) {
+  const now = new Date();
+  const startDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysIn = new Date(year, month + 1, 0).getDate();
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += `<button class="cal-cell" disabled></button>`;
+  for (let d = 1; d <= daysIn; d++) {
+    const today = year === now.getFullYear() && month === now.getMonth() && d === now.getDate();
+    const facts = byDayFact[d] || [];
+    const plans = byDayPlan[d] || [];
+    const factTypes = [...new Set(facts.map((x) => x.work.type))].slice(0, 3);
+    let dots = factTypes.map((t) => `<span class="dot" style="background:${tColor(t)}"></span>`).join('');
+    if (plans.length && factTypes.length < 3) dots += `<span class="dot plan"></span>`;
+    cells += `<button class="cal-cell ${today?'today':''} ${selDay===d?'sel':''}" data-day="${d}">
+      <span>${d}</span><span class="dots">${dots}</span></button>`;
+  }
+  return `
+    <div class="cal-head">
+      <button class="cal-nav" data-nav="${prefix}-1">‹</button>
+      <div class="cal-title">${MONTHS[month]} ${year}</div>
+      <button class="cal-nav" data-nav="${prefix}+1">›</button>
+    </div>
+    <div class="cal-grid">${DOW.map((d)=>`<div class="cal-dow">${d}</div>`).join('')}${cells}</div>`;
+}
+
+function factsByDay(year, month) {
+  const map = {};
+  for (const o of D.orders) for (const w of o.works) {
+    if (!w.date) continue;
+    const [y,m,d] = w.date.split('-').map(Number);
+    if (y === year && m === month + 1) (map[d] = map[d] || []).push({ order: o, work: w });
+  }
+  return map;
+}
+function plansByDay(year, month) {
+  const map = {};
+  for (const p of D.plan) {
+    const [y,m,d] = p.date.split('-').map(Number);
+    if (y === year && m === month + 1) (map[d] = map[d] || []).push(p);
+  }
+  return map;
+}
+function planIsDone(p) {
+  return D.orders.some((o) => o.num === p.order && o.works.some((w) => w.planId === p.id));
+}
+
+function renderPlan() {
+  if (!view.ym) view.ym = ymNow();
+  const [year, month] = view.ym;
+  const byF = factsByDay(year, month), byP = plansByDay(year, month);
+  let html = calendarGrid(year, month, byF, byP, view.selDay, 'cal');
+
+  html += `<div class="row2" style="margin:14px 0 4px">
+    <button class="btn btn-outline" id="importBtn">⤓ Загрузить календарь 1С</button>
+  </div>
+  <div class="hint">Выгрузи «Календарь операций» из 1С (.XLS) и загрузи сюда — план появится в календаре, а работы можно будет оформлять в один клик.</div>`;
+
+  if (view.selDay) {
+    const d = view.selDay;
+    const plans = (byP[d] || []).slice().sort((a,b) => a.from.localeCompare(b.from));
+    const facts = (byF[d] || []).slice().sort((a,b) => (a.work.from||'').localeCompare(b.work.from||''));
+    html += `<h2 style="margin-top:18px">${d} ${MONTHS[month].toLowerCase()}</h2>`;
+
+    // пересечения: человек в 2+ заказах в этот день
+    const perOrders = {};
+    for (const { order, work } of facts) for (const l of work.lines) {
+      (perOrders[l.name] = perOrders[l.name] || new Set()).add(order.num);
+    }
+    const busy = Object.entries(perOrders).filter(([,s]) => s.size > 1);
+    if (busy.length) {
+      html += `<div class="warn-banner">В двух и более заказах сегодня: ${busy.map(([n,s]) => `${esc(n)} (№${[...s].join(', №')})`).join('; ')}. Это разрешено — просто держи в голове занятость.</div>`;
+    }
+
+    if (!plans.length && !facts.length) html += `<div class="empty">На этот день нет ни плана, ни работ.</div>`;
+    html += `<div class="tl">`;
+    for (const p of plans) {
+      const done = planIsDone(p);
+      html += `<div class="tl-item"><div class="tl-time">${p.from}${p.to ? '<br>' + p.to : ''}</div><div class="tl-node"></div>
+        <button class="plan-card" data-plan="${p.id}">
+          <div class="spread"><span class="badge-order">ЗАКАЗ №${esc(p.order || '—')}</span>
+          ${done ? '<span class="badge-done">✓ оформлено</span>' : '<span class="tl-add">+ оформить</span>'}</div>
+          <div class="op">${esc(p.op)}</div>
+          ${p.client ? `<div class="client">${esc(p.client)}</div>` : ''}
+        </button></div>`;
+    }
+    for (const { order, work } of facts) {
+      html += `<div class="tl-item fact"><div class="tl-time">${work.from || '—'}${work.to ? '<br>' + work.to : ''}</div><div class="tl-node"></div>
+        <button class="fact-card" data-fact-order="${order.id}">
+          <div class="spread">
+            <span><span class="chip" style="color:${tColor(work.type)};border-color:${tColor(work.type)}">${esc(work.type)}</span>
+            <span class="badge-order" style="margin-left:6px">№${esc(order.num)}</span></span>
+            <span class="mono">${fmtMoney(workTotal(work))} ₽</span>
+          </div>
+          <div class="meta">${work.lines.map((l)=>esc(personName(l))).join(', ') || 'без участников'}</div>
+        </button></div>`;
+    }
+    html += `</div>`;
+  } else {
+    html += `<div class="hint">Нажми на день: сплошные точки — оформленные работы, пустая — план из 1С.</div>`;
+  }
+  return html;
+}
+
+/* ---------- Заказы ---------- */
+function renderOrders() {
+  let html = `<h2>Заказы</h2>`;
+  if (view.addingOrder) {
+    html += `<div class="card">
+      <label>Номер или название заказа</label>
+      <input class="f" id="newOrderNum" placeholder="Например: 963" autofocus>
+      <div class="row2"><button class="btn btn-ghost" id="cancelOrder">Отмена</button>
+      <button class="btn btn-primary" id="createOrder">Создать</button></div></div>`;
+  } else {
+    html += `<button class="btn btn-primary btn-big" id="addOrderBtn">+ Новый заказ</button>`;
+  }
+  if (!D.orders.length && !view.addingOrder)
+    html += `<div class="empty">Пока нет заказов. Создай вручную или оформи из плана на вкладке «План».</div>`;
+  for (const o of D.orders) {
+    const dates = o.works.map((w)=>w.date).filter(Boolean).sort();
+    const types = [...new Set(o.works.map((w)=>w.type))];
+    html += `<button class="list-card" data-order="${o.id}">
+      <div class="spread"><span class="order-num">Заказ ${esc(o.num)}</span>
+      <span class="money money-big">${fmtMoney(orderTotal(o))} ₽</span></div>
+      <div class="meta">${o.works.length ? `${o.works.length} ${plural(o.works.length,'работа','работы','работ')}` : 'работ пока нет'}${dates.length ? ` · ${fmtD(dates[0])}${dates.length>1?' – '+fmtD(dates[dates.length-1]):''}` : ''}</div>
+      ${types.length ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${types.map((t)=>`<span class="chip" style="color:${tColor(t)};border-color:${tColor(t)}">${esc(t)}</span>`).join('')}</div>` : ''}
+    </button>`;
+  }
+  return html;
+}
+
+function personName(line) {
+  const p = D.people.find((x) => x.id === line.personId);
+  return p ? p.name : line.name || '—';
+}
+
+function renderOrder() {
+  const o = D.orders.find((x) => x.id === view.orderId);
+  if (!o) { view.orderId = null; return renderOrders(); }
+  let html = `<button class="back" id="backBtn">← Все заказы</button>
+    <div class="spread"><h2 style="margin:6px 0">Заказ ${esc(o.num)}</h2>
+    <span class="money money-big">${fmtMoney(orderTotal(o))} ₽</span></div>
+    <button class="btn btn-primary btn-big" id="addWorkBtn">+ Добавить работу</button>`;
+  if (!o.works.length) html += `<div class="empty">Добавь первую работу: монтаж, демонтаж, транспорт — с участниками и суммами.</div>`;
+  for (const w of o.works) {
+    html += `<button class="list-card" data-work="${w.id}">
+      <div class="spread"><span class="chip" style="color:${tColor(w.type)};border-color:${tColor(w.type)}">${esc(w.type)}</span>
+      <span class="mono" style="font-size:17px">${fmtMoney(workTotal(w))} ₽</span></div>
+      <div class="meta">${w.note ? esc(w.note) + ' · ' : ''}${w.date ? fmtD(w.date) : 'без даты'}${w.from && w.to ? ` ${w.from}–${w.to}` : w.from ? ` ${w.from}` : ''}</div>
+      <div class="divider"></div>
+      ${w.lines.map((l)=>`<div class="line-row"><span>${esc(personName(l))}</span><span class="mono">${fmtMoney(l.amount)}</span></div>`).join('')}
+    </button>`;
+  }
+  const totals = {};
+  for (const w of o.works) for (const l of w.lines) totals[personName(l)] = (totals[personName(l)]||0) + (Number(l.amount)||0);
+  const rows = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  if (rows.length) {
+    html += `<div class="card"><div class="card-title">Итого по людям</div>
+      ${rows.map(([n,s])=>`<div class="line-row"><span>${esc(n)}</span><span class="mono" style="color:var(--amber)">${fmtMoney(s)} ₽</span></div>`).join('')}</div>`;
+  }
+  if (o.works.length) html += `<button class="btn btn-outline btn-big" id="reportBtn">Отчёт для HR</button>`;
+  html += view.confirm === 'delOrder'
+    ? `<div class="row2"><button class="btn btn-ghost" id="cancelDel">Отмена</button><button class="btn btn-danger" id="doDelOrder">Удалить навсегда</button></div>`
+    : `<button class="btn btn-ghost btn-big" style="margin-top:4px" id="askDelOrder">Удалить заказ</button>`;
+  return html;
+}
+
+/* ---------- Форма работы ---------- */
+function renderWorkForm() {
+  const w = view.work;
+  const isNew = !w.saved;
+  let html = `<button class="back" id="backBtn">← Назад</button><h2>${isNew ? 'Новая работа' : 'Работа'} · заказ ${esc(orderById(view.orderId)?.num || '')}</h2>`;
+  html += `<label>Тип работы</label><div class="chips">`;
+  for (const t of D.types) {
+    const on = w.type === t;
+    html += `<button class="chip-btn" data-type="${esc(t)}" style="border-color:${tColor(t)};color:${on?'#10151D':tColor(t)};background:${on?tColor(t):'transparent'}">${esc(t)}</button>`;
+  }
+  html += `<button class="chip-btn" id="addTypeBtn" style="border-color:var(--faint);color:var(--faint)">+ свой</button></div>`;
+  html += `
+    <label>Примечание (попадёт в отчёт)</label>
+    <input class="f" id="wNote" value="${esc(w.note)}" placeholder="Например: Монтаж и Демонтаж">
+    <label>Дата (необязательно)</label>
+    <input class="f" type="date" id="wDate" value="${esc(w.date||'')}">
+    <div class="row2">
+      <div><label>Начало</label><input class="f" type="time" id="wFrom" value="${esc(w.from||'')}"></div>
+      <div><label>Конец</label><input class="f" type="time" id="wTo" value="${esc(w.to||'')}"></div>
+    </div>
+    <label>Участники — сумма из ставки, можно менять</label>`;
+  if (!D.people.length) html += `<div class="empty">Список людей пуст. Добавь бригаду во вкладке «Люди».</div>`;
+  for (const p of D.people) {
+    const line = w.lines.find((l) => l.personId === p.id);
+    html += `<div class="person-row ${line?'on':''}">
+      <button class="person-toggle" data-person="${p.id}"><span class="checkbox">${line?'✓':''}</span><span>${esc(p.name)}</span></button>
+      ${line ? `<input class="amount-input" data-amount="${p.id}" type="number" inputmode="numeric" value="${esc(line.amount)}">` : ''}
+    </div>`;
+  }
+  const total = w.lines.reduce((s,l)=>s+(Number(l.amount)||0),0);
+  html += `<div class="card spread" style="margin-top:14px"><span class="card-title" style="margin:0">Итого за работу</span><span class="mono" style="font-size:17px">${fmtMoney(total)} ₽</span></div>
+    <button class="btn btn-primary btn-big" id="saveWork" ${w.lines.length?'':'disabled'}>${isNew?'Добавить работу':'Сохранить изменения'}</button>`;
+  if (!isNew) {
+    html += view.confirm === 'delWork'
+      ? `<div class="row2"><button class="btn btn-ghost" id="cancelDel">Отмена</button><button class="btn btn-danger" id="doDelWork">Удалить работу</button></div>`
+      : `<button class="btn btn-ghost btn-big" id="askDelWork">Удалить работу</button>`;
+  }
+  return html;
+}
+
+/* ---------- Отчёт ---------- */
+function buildReport(o) {
+  let out = `Заказ ${o.num}\n`;
+  for (const w of o.works) {
+    out += '\n';
+    let head = w.type;
+    if (w.note) head += ' ' + w.note;
+    if (w.date) head += ' ' + fmtD(w.date);
+    if (w.from && w.to) head += ' ' + w.from + '-' + w.to;
+    out += head + '\n';
+    for (const l of w.lines) out += `${personName(l)} ${Number(l.amount)||0}\n`;
+  }
+  return out.trimEnd();
+}
+function renderReport() {
+  const o = orderById(view.orderId);
+  const text = buildReport(o);
+  return `<button class="back" id="backBtn">← Назад к заказу</button><h2>Отчёт для HR</h2>
+    <div class="paper"><textarea id="reportText" readonly rows="${Math.min(24, text.split('\n').length + 1)}">${esc(text)}</textarea></div>
+    <button class="btn btn-primary btn-big" id="copyReport">Скопировать отчёт</button>
+    <div class="hint">Вставь текст в мессенджер или письмо для HR.</div>`;
+}
+
+/* ---------- Люди ---------- */
+function renderPeople() {
+  const e = view.editPerson;
+  let html = `<h2>Бригада</h2>
+    <div class="card">
+      <label>Имя и фамилия</label><input class="f" id="pName" value="${esc(e?e.name:'')}" placeholder="Петров Алексей">
+      <label>Обычная ставка за смену, ₽</label><input class="f" id="pRate" type="number" inputmode="numeric" value="${esc(e?e.rate:'')}" placeholder="6000">
+      <div class="row2">${e?'<button class="btn btn-ghost" id="cancelPerson">Отмена</button>':''}
+      <button class="btn btn-primary" id="savePerson">${e?'Сохранить':'+ Добавить человека'}</button></div>
+    </div>`;
+  if (!D.people.length) html += `<div class="empty">Добавь бригаду — при создании работы ставка подставится автоматически.</div>`;
+  for (const p of D.people) {
+    html += `<div class="person-row">
+      <button class="person-toggle" data-edit-person="${p.id}"><span style="font-weight:600">${esc(p.name)}</span></button>
+      <span class="mono" style="color:var(--amber);white-space:nowrap">${fmtMoney(p.rate)} ₽</span>
+      ${view.confirm === 'delP' + p.id
+        ? `<button class="btn btn-danger" style="min-height:40px;padding:8px 12px" data-del-person="${p.id}">Точно?</button>`
+        : `<button class="del-x" data-ask-del-person="${p.id}">✕</button>`}
+    </div>`;
+  }
+  html += `<div class="hint">Нажми на имя, чтобы изменить. Прошлые работы при этом не пересчитываются.</div>`;
+  return html;
+}
+
+/* ---------- Сводка ---------- */
+function renderSummary() {
+  if (!view.sumYm) view.sumYm = ymNow();
+  const [year, month] = view.sumYm;
+  const inMonth = (iso) => { if (!iso) return false; const [y,m] = iso.split('-').map(Number); return y===year && m===month+1; };
+  const map = {}; let total = 0; const orderSet = new Set(); let workCount = 0;
+  for (const o of D.orders) {
+    const active = o.works.some((w) => inMonth(w.date));
+    for (const w of o.works) {
+      if (!(inMonth(w.date) || (!w.date && active))) continue;
+      workCount++; orderSet.add(o.id);
+      for (const l of w.lines) { const n = personName(l); const a = Number(l.amount)||0; map[n]=(map[n]||0)+a; total+=a; }
+    }
+  }
+  const rows = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  let html = `
+    <div class="cal-head">
+      <button class="cal-nav" data-nav="sum-1">‹</button>
+      <div class="cal-title">${MONTHS[month]} ${year}</div>
+      <button class="cal-nav" data-nav="sum+1">›</button>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="card-title">Заработано бригадой за месяц</div>
+      <div class="money money-huge">${fmtMoney(total)} ₽</div>
+      <div class="hint" style="margin-top:2px">${orderSet.size} ${plural(orderSet.size,'заказ','заказа','заказов')} · ${workCount} ${plural(workCount,'работа','работы','работ')}</div>
+    </div>`;
+  if (!rows.length) html += `<div class="empty">В этом месяце работ не отмечено.</div>`;
+  else html += `<div class="card"><div class="card-title">По людям</div>
+    ${rows.map(([n,s])=>`<div class="line-row"><span>${esc(n)}</span><span class="mono" style="color:var(--amber)">${fmtMoney(s)} ₽</span></div>`).join('')}</div>`;
+  html += `<div class="hint">Работы без даты (например, транспорт) попадают в месяц, если у их заказа есть работы в этом месяце.</div>`;
+  return html;
+}
+
+/* ================= События ================= */
+const orderById = (id) => D.orders.find((o) => o.id === id);
+
+function bindMain() {
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+  // навигация месяцев
+  $$('[data-nav]').forEach((b) => b.addEventListener('click', () => {
+    const [pfx, delta] = [b.dataset.nav.slice(0, -2), Number(b.dataset.nav.slice(-2))];
+    const key = pfx === 'sum' ? 'sumYm' : 'ym';
+    let [y, m] = view[key] || ymNow();
+    m += delta; if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
+    view[key] = [y, m]; if (key === 'ym') view.selDay = null;
+    render();
+  }));
+  $$('.cal-cell[data-day]').forEach((b) => b.addEventListener('click', () => {
+    const d = Number(b.dataset.day);
+    view.selDay = view.selDay === d ? null : d; render();
+  }));
+
+  // план: импорт
+  const imp = $('#importBtn');
+  if (imp) imp.addEventListener('click', () => document.getElementById('xlsInput').click());
+
+  // план: оформить из плана
+  $$('[data-plan]').forEach((b) => b.addEventListener('click', () => {
+    const p = D.plan.find((x) => x.id === b.dataset.plan);
+    if (!p) return;
+    let o = D.orders.find((x) => x.num === (p.order || ''));
+    if (!o) { o = { id: uid(), num: p.order || '—', works: [] }; D.orders.unshift(o); }
+    view.tab = 'orders'; view.orderId = o.id;
+    view.work = { id: uid(), saved: false, planId: p.id, type: guessType(p.op), note: p.op, date: p.date, from: p.from || '', to: p.to || '', lines: [] };
+    render();
+  }));
+  $$('[data-fact-order]').forEach((b) => b.addEventListener('click', () => {
+    view.tab = 'orders'; view.orderId = b.dataset.factOrder; render();
+  }));
+
+  // заказы
+  const addO = $('#addOrderBtn'); if (addO) addO.addEventListener('click', () => { view.addingOrder = true; render(); });
+  const cO = $('#cancelOrder'); if (cO) cO.addEventListener('click', () => { view.addingOrder = false; render(); });
+  const crO = $('#createOrder'); if (crO) crO.addEventListener('click', async () => {
+    const num = $('#newOrderNum').value.trim(); if (!num) return;
+    const o = { id: uid(), num, works: [] }; D.orders.unshift(o);
+    view.addingOrder = false; view.orderId = o.id; await save(); render();
+  });
+  $$('[data-order]').forEach((b) => b.addEventListener('click', () => { view.orderId = b.dataset.order; view.confirm = null; render(); }));
+
+  const back = $('#backBtn'); if (back) back.addEventListener('click', () => {
+    if (view.work !== null) { view.work = null; }
+    else if (view.report) { view.report = false; }
+    else { view.orderId = null; }
+    view.confirm = null; render();
+  });
+
+  const addW = $('#addWorkBtn'); if (addW) addW.addEventListener('click', () => {
+    view.work = { id: uid(), saved: false, type: D.types[0], note: '', date: '', from: '', to: '', lines: [] }; render();
+  });
+  $$('[data-work]').forEach((b) => b.addEventListener('click', () => {
+    const o = orderById(view.orderId); const w = o.works.find((x) => x.id === b.dataset.work);
+    view.work = JSON.parse(JSON.stringify({ ...w, saved: true })); render();
+  }));
+
+  const rep = $('#reportBtn'); if (rep) rep.addEventListener('click', () => { view.report = true; render(); });
+  const copy = $('#copyReport'); if (copy) copy.addEventListener('click', async () => {
+    const ta = $('#reportText');
+    try { await navigator.clipboard.writeText(ta.value); toast('Отчёт скопирован'); }
+    catch { ta.select(); document.execCommand('copy'); toast('Отчёт скопирован'); }
+  });
+
+  const askDO = $('#askDelOrder'); if (askDO) askDO.addEventListener('click', () => { view.confirm = 'delOrder'; render(); });
+  const doDO = $('#doDelOrder'); if (doDO) doDO.addEventListener('click', async () => {
+    D.orders = D.orders.filter((o) => o.id !== view.orderId);
+    view.orderId = null; view.confirm = null; await save(); render();
+  });
+  const cD = $('#cancelDel'); if (cD) cD.addEventListener('click', () => { view.confirm = null; render(); });
+
+  // форма работы
+  if (view.work !== null) {
+    const w = view.work;
+    const readFields = () => {
+      w.note = $('#wNote').value; w.date = $('#wDate').value || '';
+      w.from = $('#wFrom').value || ''; w.to = $('#wTo').value || '';
+      $$('[data-amount]').forEach((inp) => {
+        const l = w.lines.find((x) => x.personId === inp.dataset.amount);
+        if (l) l.amount = inp.value;
+      });
+    };
+    $$('[data-type]').forEach((b) => b.addEventListener('click', () => { readFields(); w.type = b.dataset.type; render(); }));
+    const at = $('#addTypeBtn'); if (at) at.addEventListener('click', async () => {
+      readFields();
+      const t = prompt('Название типа работы:'); // простой ввод — ок для v1
+      if (t && t.trim()) { const tt = t.trim(); if (!D.types.includes(tt)) { D.types.push(tt); await save(); } w.type = tt; }
+      render();
+    });
+    $$('[data-person]').forEach((b) => b.addEventListener('click', () => {
+      readFields();
+      const p = D.people.find((x) => x.id === b.dataset.person);
+      if (w.lines.some((l) => l.personId === p.id)) w.lines = w.lines.filter((l) => l.personId !== p.id);
+      else w.lines.push({ personId: p.id, name: p.name, amount: p.rate || 0 });
+      render();
+    }));
+    $$('[data-amount]').forEach((inp) => inp.addEventListener('input', () => {
+      const l = w.lines.find((x) => x.personId === inp.dataset.amount);
+      if (l) l.amount = inp.value;
+    }));
+    const sv = $('#saveWork'); if (sv) sv.addEventListener('click', async () => {
+      readFields();
+      if (!w.lines.length) return;
+      const clean = { id: w.id, planId: w.planId || null, type: w.type, note: w.note.trim(), date: w.date || null, from: w.from, to: w.to,
+        lines: w.lines.map((l) => ({ ...l, amount: Number(l.amount) || 0 })) };
+      const o = orderById(view.orderId);
+      const idx = o.works.findIndex((x) => x.id === w.id);
+      if (idx >= 0) o.works[idx] = clean; else o.works.push(clean);
+      view.work = null; await save(); render(); toast('Сохранено');
+    });
+    const askDW = $('#askDelWork'); if (askDW) askDW.addEventListener('click', () => { readFields(); view.confirm = 'delWork'; render(); });
+    const doDW = $('#doDelWork'); if (doDW) doDW.addEventListener('click', async () => {
+      const o = orderById(view.orderId);
+      o.works = o.works.filter((x) => x.id !== w.id);
+      view.work = null; view.confirm = null; await save(); render();
+    });
+  }
+
+  // люди
+  const sp = $('#savePerson'); if (sp) sp.addEventListener('click', async () => {
+    const name = $('#pName').value.trim(); const rate = Number($('#pRate').value) || 0;
+    if (!name) return;
+    if (view.editPerson) {
+      const p = D.people.find((x) => x.id === view.editPerson.id);
+      if (p) { p.name = name; p.rate = rate; }
+      view.editPerson = null;
+    } else D.people.push({ id: uid(), name, rate });
+    await save(); render();
+  });
+  const cp = $('#cancelPerson'); if (cp) cp.addEventListener('click', () => { view.editPerson = null; render(); });
+  $$('[data-edit-person]').forEach((b) => b.addEventListener('click', () => {
+    view.editPerson = { ...D.people.find((x) => x.id === b.dataset.editPerson) }; render();
+  }));
+  $$('[data-ask-del-person]').forEach((b) => b.addEventListener('click', () => { view.confirm = 'delP' + b.dataset.askDelPerson; render(); }));
+  $$('[data-del-person]').forEach((b) => b.addEventListener('click', async () => {
+    D.people = D.people.filter((p) => p.id !== b.dataset.delPerson);
+    view.confirm = null; await save(); render();
+  }));
+}
+
+/* импорт файла */
+document.getElementById('xlsInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf);
+    const events = parsePlanWorkbook(wb);
+    if (!events.length) { toast('В файле не нашлось событий'); return; }
+    const dates = events.map((x) => x.date).sort();
+    const [lo, hi] = [dates[0], dates[dates.length - 1]];
+    // заменяем план в затронутом периоде, остальное не трогаем
+    const kept = D.plan.filter((p) => p.date < lo || p.date > hi);
+    D.plan = [...kept, ...events].sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from));
+    await save();
+    const [y, m] = lo.split('-').map(Number);
+    view.tab = 'plan'; view.ym = [y, m - 1]; view.selDay = Number(lo.split('-')[2]);
+    render();
+    toast(`Загружено: ${events.length} соб., ${fmtD(lo)}–${fmtD(hi)}`);
+  } catch (err) { toast('Не удалось прочитать файл'); }
+});
+
+/* ================= Старт ================= */
+(async () => {
+  const loaded = await loadData();
+  D = loaded && loaded.orders ? loaded : { people: [], types: [...DEFAULT_TYPES], orders: [], plan: [] };
+  if (!D.plan) D.plan = [];
+  if (!D.types.includes('Склад')) D.types.splice(3, 0, 'Склад');
+  render();
+})();
+</script>
+</body>
+</html>
